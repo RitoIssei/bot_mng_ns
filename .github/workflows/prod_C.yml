@@ -1,0 +1,37 @@
+name: CD C
+
+on:
+  push:
+    branches:
+      - production
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.C_HOST }}
+          username: ${{ secrets.C_USERNAME }}
+          password: ${{ secrets.C_PASSWORD }}
+          script: |
+            echo "${{ secrets.C_PASSWORD }}" | sudo -S bash -c '
+
+            cd /root/bot_de
+
+            git fetch origin
+            git checkout production
+            git pull origin production
+
+            source venv/bin/activate
+            pip install -r requirements.txt
+
+            pm2 restart bot_khu_c
+            '

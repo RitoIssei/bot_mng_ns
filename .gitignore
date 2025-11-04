@@ -1,0 +1,61 @@
+# Ignore hệ thống
+.DS_Store
+Thumbs.db
+
+# Ignore file Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Ignore môi trường ảo
+venv/
+.env
+.venv/
+Pipfile
+Pipfile.lock
+
+# Ignore các file log, database tạm
+*.log
+*.sqlite3
+*.db
+*.sqlite
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore các file cấu hình IDE/editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+logs/
+# Ignore các tệp build & distribution
+build/
+dist/
+*.egg-info/
+
+# Ignore tệp đầu ra của pytest
+.pytest_cache/
+
+# Ignore coverage report
+.coverage
+htmlcov/
+*.cover
+*.py,cover
+nosetests.xml
+coverage.xml
+
+# Ignore file tạm
+*.tmp
+*.temp
+ecosystem.config.js
+.env.khu_a
+.env.khu_b
+.env.khu_c
+.env.khu_d
+.env.khu_e
+.env.khu_i
+.env.naptien
+
+assets/
