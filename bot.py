@@ -70,10 +70,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "- Hỗ trợ quản lý phòng ban và trợ lý.\n\n"
         "🔹 **Hướng dẫn sử dụng:**\n"
         "Sử dụng lệnh /h hoặc /help để xem danh sách các lệnh hỗ trợ.\n\n"
-        "💡 **Thông tin:**\n"
-        "- Bot được phát triển bởi SHFC JUNT.\n"
-        "- Liên hệ: [https://t.me/junt_f168]\n"
-        "- Website: [https://anhtuanlc.com](https://anhtuanlc.com)\n"
     )
     await update.message.reply_text(introduction_text, parse_mode="Markdown")
 
@@ -206,7 +202,6 @@ def main():
     application.add_handler(CallbackQueryHandler(data_h.handle_facebook_bulk_yes, pattern="^facebook_bulk_yes$"))
     application.add_handler(CallbackQueryHandler(data_h.handle_facebook_bulk_no,  pattern="^facebook_bulk_no$"))
 
-
     # Thêm handler cho lệnh /chatid để xác nhận chat ID
     application.add_handler(CommandHandler("gettid", get_chat_id))
     application.add_handler(CommandHandler("info", handle_info_command))
@@ -216,18 +211,9 @@ def main():
     application.add_handler(CommandHandler("removetroly", admin_h.remove_troly))
     application.add_handler(CommandHandler("lstroly", admin_h.list_troly))
     
-    # Thêm các lệnh Admin commands trực tiếp vào application
-    application.add_handler(CommandHandler("addhlv", admin_h.add_hlv))
-    application.add_handler(CommandHandler("rmhlv", admin_h.remove_hlv))
-    application.add_handler(CommandHandler("lshlv", admin_h.list_hlv))
-
-    # Thêm các lệnh Admin commands trực tiếp vào application
-    application.add_handler(CommandHandler("addad", admin_h.add_ad))
-    application.add_handler(CommandHandler("rmad", admin_h.remove_ad))
-    application.add_handler(CommandHandler("lsad", admin_h.list_ads))
-
     # Thêm các lệnh Room management commands trực tiếp vào application
     application.add_handler(CommandHandler("addroom", admin_h.add_room))
+    application.add_handler(CallbackQueryHandler(admin_h.add_room_area_callback, pattern=r"^addroom_area\|"))
     application.add_handler(CommandHandler("removeroom", admin_h.remove_room))
     application.add_handler(CommandHandler("listrooms", admin_h.list_rooms))
 
@@ -240,20 +226,7 @@ def main():
         pattern=r"^(YES|NO)\|[0-9a-f\-]{36}$"
     )
     application.add_handler(button_handler)
-    application.add_handler(CallbackQueryHandler(ads_h.handle_rp_callback, pattern=r"^rp_"))
-    application.add_handler(CallbackQueryHandler(ads_h.handle_hold_callback, pattern="^hold_"))
-    application.add_handler(CallbackQueryHandler(ads_h.handle_naptien_callback, pattern="^naptien_"))
     
-    application.add_handler(CommandHandler("ch", ads_h.check_record)) 
-    # application.add_handler(CommandHandler("rm", ads_h.delete_record))
-    # application.add_handler(CommandHandler("rp",rp))
-    application.add_handler(CommandHandler("hold", ads_h.hold_command))
-    application.add_handler(CommandHandler("naptien", ads_h.naptien_command))
-    
-    application.add_handler(MessageHandler(
-        filters.ALL,
-        rp
-    ))
     
     # Thêm error handler
     application.add_error_handler(error_handler)

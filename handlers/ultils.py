@@ -228,10 +228,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "   - **/addtroly <id>** - Thêm trợ lý mới.\n"
         "   - **/removetroly <id>** - Xóa trợ lý.\n"
         "   - **/lstroly** - Liệt kê danh sách trợ lý.\n"
-        "   - **/addhlv <id>** - Thêm HLV mới.\n"
-        "   - **/rmhlv <id>** - Xóa HLV.\n"
-        "   - **/lshlv** - Liệt kê danh sách HLV.\n"
-        "Hãy nhập lệnh theo đúng định dạng để sử dụng bot hiệu quả! 🚀"
+        "Hãy nhập lệnh theo đúng định dạng để sử dụng bot hiệu quả!"
     )
     await update.message.reply_text(help_text, parse_mode="Markdown")
 

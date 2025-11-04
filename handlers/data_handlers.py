@@ -4,7 +4,7 @@ from telegram.error import TelegramError
 from handlers.ultils import generate_random_code, process_budget , format_number , safe_send_message , safe_edit_message , normalize_text , get_custom_today_epoch
 from handlers.db_helpers import init_db, add_confirmation, get_confirmation, delete_confirmation
 from datetime import datetime, timezone, timedelta
-from decorators import troly_only, allowed_room , hlv_or_troly
+from decorators import troly_only, allowed_room , troly_only
 from db.budget import BudgetManager
 from config import ADMIN_IDS ,EXPIRATION_TIME
 from db.note import note_manager
@@ -164,8 +164,8 @@ async def handle_ngansach(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         try:
             # 🟢 Lấy ngân sách hiện tại từ MongoDB
-            
-            current_budgets = budget_manager.get_current_budget(list(all_contract_codes),data["tổ"])
+            chat_id = update.effective_chat.id
+            current_budgets = budget_manager.get_current_budget(list(all_contract_codes),data["tổ"], chat_id)
 
             # 🟢 Tính toán ngân sách dự kiến trực tiếp từ current_budgets (KHÔNG gọi lại DB)
             projected_budgets = {
@@ -380,7 +380,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         all_contract_codes.add(code + "11")  # FD3N ➝ FD3N11
 
                 # 🟢 Lấy ngân sách hiện tại từ MongoDB
-                current_budgets = budget_manager.get_current_budget(list(all_contract_codes), data["tổ"])
+                chat_id = update.effective_chat.id
+                current_budgets = budget_manager.get_current_budget(list(all_contract_codes), data["tổ"],chat_id)
 
                 # 🟢 Lưu từng mã HD vào MongoDB
                 for code, count in hd_counts.items():
@@ -401,6 +402,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         team=data["tổ"],
                         contract_code=code,
                         group_name=data["tên nhóm"],
+                        chat_id=chat_id,
                         amount=budget_share,
                         status="pending",
                         assistant=full_name,
@@ -546,7 +548,8 @@ async def handle_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         # 🟢 Tính tổng ngân sách đã chi theo từng `contract_code`
         contract_codes = {record["contract_code"] for record in pending_records}
-        total_budget_by_hd = budget_manager.get_current_budget(list(contract_codes),pending_records[0]["team"])
+
+        total_budget_by_hd = budget_manager.get_current_budget(list(contract_codes),pending_records[0]["team"],chat_id)
         amount_done = amount if amount is not None else pending_records[0].get("amount", 0)
         
         success_message = (
@@ -659,6 +662,7 @@ async def handle_rf_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             team=organization,
             contract_code=contract_code,  # ✅ Gán mã hợp đồng vào đây
             group_name=chat_title,
+            chat_id=chat_id,
             amount=amount,
             status="refund",
             timestamp=current_timestamp,
@@ -677,8 +681,9 @@ async def handle_rf_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error("Lỗi khi ghi dữ liệu refund vào MongoDB.")
             return
 
+
         # ✅ Lấy tổng chi của contract_code (đúng format danh sách)
-        contract_budget = budget_manager.get_current_budget([contract_code],organization, False, current_timestamp)  # Đảm bảo là danh sách
+        contract_budget = budget_manager.get_current_budget([contract_code],organization,chat_id, False, current_timestamp)  # Đảm bảo là danh sách
         
         # Lấy tổng chi từ MongoDB
         total_chi = contract_budget.get(contract_code, 0)  # Trả về 0 nếu không có dữ liệu
@@ -718,7 +723,7 @@ async def handle_rf_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 # @allowed_room
-# @hlv_or_troly
+# @troly_only
 # async def handle_tiktok_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #     chat_id = update.effective_chat.id
 #     user = update.effective_user
@@ -785,7 +790,7 @@ async def handle_rf_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #         )
         
 @allowed_room
-@hlv_or_troly
+@troly_only
 async def handle_check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
 
@@ -841,7 +846,7 @@ async def handle_check_command(update: Update, context: ContextTypes.DEFAULT_TYP
                 mhd = mhd[:-1]
         
         # 🟢 Lấy tổng chi tiêu của tổ và mã hợp đồng trong tháng hiện tại
-        current_budgets = budget_manager.get_current_budget(mhd_list, organization, is_prefix_search=is_prefix_search) or {}
+        current_budgets = budget_manager.get_current_budget(mhd_list, organization,chat_id , is_prefix_search=is_prefix_search) or {}
 
         # 🟢 Lấy giá trị từ dictionary, mặc định là 0 nếu không có
         total_expenses = current_budgets.get(mhd, 0)
@@ -907,7 +912,7 @@ async def handle_check_command(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 @allowed_room
-@hlv_or_troly
+@troly_only
 async def handle_tiktok_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat_id = update.effective_chat.id
@@ -1061,7 +1066,7 @@ async def handle_tiktok_bulk_no(update: Update, context: ContextTypes.DEFAULT_TY
     await query.edit_message_text("❌ Đã hủy thao tác lưu tài khoản.")
 
 @allowed_room
-@hlv_or_troly
+@troly_only
 async def handle_facebook_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
 
@@ -1237,7 +1242,8 @@ async def handle_note_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             note_type=valid_types[note_type],
             timestamp=current_time,
             note_content=note_content,
-            assistant=f"{username} - {full_name}"
+            assistant=f"{username} - {full_name}",
+            chat_id=chat_id
         )
 
         if not inserted_id:
@@ -1286,7 +1292,7 @@ async def handle_note_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         
 @allowed_room
-@hlv_or_troly
+@troly_only
 async def handle_tiktok_bulk(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     /tiktok_bulk nick1,nick2,nick3
@@ -1330,7 +1336,7 @@ async def handle_tiktok_bulk(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
 @allowed_room
-@hlv_or_troly
+@troly_only
 async def handle_tiktok_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     /tiktok_check nick

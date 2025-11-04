@@ -2,7 +2,9 @@ from db.initdb import mongo_manager
 import config
 import logging
 from datetime import datetime
+from db.rooms import RoomManager
 
+room_manager = RoomManager()
 # Cấu hình logging
 logger = logging.getLogger(__name__)
 
@@ -19,7 +21,7 @@ class NoteManager:
         """Khởi tạo kết nối với collection 'notes'."""
         self.note_collection = mongo_manager.get_collection('notes')
 
-    def add_note(self, chat_title, note_type, timestamp, note_content, assistant):
+    def add_note(self, chat_title, note_type, timestamp, note_content, assistant, chat_id):
         """
         Lưu ghi chú vào MongoDB.
         :param chat_title: Tên nhóm chat
@@ -29,6 +31,15 @@ class NoteManager:
         :param assistant: Người tạo ghi chú
         :return: ID của ghi chú được thêm vào hoặc None nếu thất bại
         """
+        
+        room_info = room_manager.get_room_by_id(chat_id)
+
+        if not room_info:
+            logger.warning(f"⚠️ Không tìm thấy phòng với ID {chat_id}. Không thể xác định khu vực.")
+            area_name = "unknown"
+        else:
+            area_name = room_info.get("area", "unknown")
+            
         try:
             note_data = {
                 "chat_title": chat_title,
@@ -36,7 +47,7 @@ class NoteManager:
                 "timestamp": timestamp,
                 "note_content": note_content,
                 "assistant": assistant,
-                "area": config.AREA_NAME 
+                "area": area_name
             }
             inserted_id = self.note_collection.insert_one(note_data).inserted_id
             logger.info(f"Thêm ghi chú thành công vào MongoDB: {note_data}")

@@ -9,6 +9,9 @@ import re
 from handlers.ultils import generate_random_code, process_budget , format_number , safe_send_message , safe_edit_message , normalize_text , get_custom_today_epoch
 from datetime import datetime, timezone, timedelta
 import calendar
+from db.rooms import RoomManager
+
+room_manager = RoomManager()
 
 # Cấu hình logging
 logger = logging.getLogger(__name__)
@@ -33,6 +36,7 @@ class BudgetManager:
         team,
         contract_code,
         group_name,
+        chat_id,
         amount,
         status,
         timestamp=None,
@@ -51,6 +55,14 @@ class BudgetManager:
             # Dùng timestamp hiện tại nếu không có truyền vào
             ts = timestamp if timestamp else time.time()
 
+            # 🔍 Lấy thông tin phòng để xác định khu vực
+            room_info = room_manager.get_room_by_id(chat_id)
+            if not room_info:
+                logger.warning(f"⚠️ Không tìm thấy phòng với ID {chat_id}. Không thể xác định khu vực.")
+                area_name = "unknown"
+            else:
+                area_name = room_info.get("area", "unknown")
+
             budget_data = {
                 "budget_id": budget_id,
                 "team": team.upper(),
@@ -62,7 +74,7 @@ class BudgetManager:
                 "assistant": assistant,
                 "note": note,
                 "end_time": end_time if end_time is not None else 0,  # 👈 xử lý end_time
-                "area": config.AREA_NAME  # Chỉ lưu bản ghi với area hiện tại
+                "area": area_name  # Chỉ lưu bản ghi với area hiện tại
             }
 
             # Thêm dữ liệu vào MongoDB và lấy `_id`
@@ -77,7 +89,7 @@ class BudgetManager:
                 logger.warning("WebSocket client is not available. Data was not sent.")
 
             logger.info(
-                f"✅ Successfully added new budget: {budget_id} - {team.upper()} - {amount} in area {config.AREA_NAME}"
+                f"✅ Successfully added new budget: {budget_id} - {team.upper()} - {amount}"
             )
             return inserted.inserted_id
 
@@ -95,7 +107,6 @@ class BudgetManager:
         try:
             query = {
                 "budget_id": budget_id,
-                "area": config.AREA_NAME,
                 "status": "pending"
             }
 
@@ -158,13 +169,12 @@ class BudgetManager:
         try:
             query = {
                 "budget_id": budget_id,
-                "area": config.AREA_NAME,
                 "status": "pending"
             }
             pending_records = list(self.budget_collection.find(query))
     
             if not pending_records:
-                logger.warning(f"⚠️ Không tìm thấy bản ghi `pending` nào với budget_id `{budget_id}` trong khu vực `{config.AREA_NAME}`.")
+                logger.warning(f"⚠️ Không tìm thấy bản ghi `pending` nào với budget_id `{budget_id}`.")
             
             return pending_records
         except Exception as e:
@@ -195,13 +205,13 @@ class BudgetManager:
     
             # Cập nhật trong MongoDB
             result = self.budget_collection.update_one(
-                {"_id": record_id, "area": config.AREA_NAME},
+                {"_id": record_id},
                 {"$set": new_data}
             )
     
             if result.modified_count:
                 updated_data = self.budget_collection.find_one(
-                    {"_id": record_id, "area": config.AREA_NAME},
+                    {"_id": record_id},
                     {"_id": 0}
                 )
     
@@ -211,7 +221,7 @@ class BudgetManager:
                 else:
                     logger.warning("⚠️ WebSocket không khả dụng, không gửi được dữ liệu.")
     
-                logger.info(f"✅ Đã cập nhật bản ghi {record_id} thành công cho khu vực {config.AREA_NAME}")
+                logger.info(f"✅ Đã cập nhật bản ghi {record_id} thành công")
                 return True
             else:
                 logger.warning(f"⚠️ Không tìm thấy bản ghi {record_id} hoặc không có thay đổi.")
@@ -241,7 +251,7 @@ class BudgetManager:
 
         return hd_code
     
-    def get_current_budget(self, contract_codes, team, is_prefix_search=False, current_timestamp=None):
+    def get_current_budget(self, contract_codes, team, chat_id ,is_prefix_search=False, current_timestamp=None):
         """
         Lấy tổng ngân sách hiện tại của danh sách contract_code từ MongoDB.
         Nếu hôm nay là ngày cuối tháng (theo giờ Việt Nam), thì lấy ngân sách của tháng sau.
@@ -289,20 +299,20 @@ class BudgetManager:
                 contract_code_query = {
                     "$in": contract_codes
                 }
-
+            # 🔍 Lấy thông tin phòng để xác định khu vực
+            room_info = room_manager.get_room_by_name(chat_id)
+            if not room_info:
+                logger.warning(f"⚠️ Không tìm thấy phòng với ID {chat_id}. Không thể xác định khu vực.")
+                area_name = "unknown"
+            else:
+                area_name = room_info.get("area", "unknown")
+                
             query = {
                 "contract_code": contract_code_query,
-                "area": config.AREA_NAME,
+                "area": area_name,
                 "team": team,
                 "timestamp": {"$gte": timestamp_start, "$lte": timestamp_end}
             }
-
-            # query = {
-            #     "contract_code": {"$in": contract_codes},
-            #     "area": config.AREA_NAME,
-            #     "team": team,
-            #     "timestamp": {"$gte": timestamp_start, "$lte": timestamp_end}
-            # }
 
             pipeline = [
                 {"$match": query},
@@ -323,153 +333,6 @@ class BudgetManager:
             return {}
         
     
-    def delete_budget(self, budget_id):
-        try:
-            result = self.budget_collection.delete_one({"budget_id": budget_id, "area": config.AREA_NAME})
-            if result.deleted_count:
-                logger.info(f"Successfully deleted budget {budget_id} in area {config.AREA_NAME}.")
-            else:
-                logger.warning(f"Budget {budget_id} not found in area {config.AREA_NAME}.")
-            return result.deleted_count
-        except Exception as e:
-            logger.error(f"Error deleting budget: {e}")
-            return 0
-    
-
-    def get_all_budgets(self):
-        try:
-            budgets = list(self.budget_collection.find({"area": config.AREA_NAME}, {"_id": 0}))
-            return budgets
-        except Exception as e:
-            logger.error(f"Error retrieving budget list: {e}")
-            return []
-    
-    
-    def load_budget_ids(self):
-        try:
-            budget_ids = self.budget_collection.distinct("budget_id", {"area": config.AREA_NAME})
-            return [budget_id for budget_id in budget_ids if budget_id is not None]
-        except Exception as e:
-            logger.error(f"Error retrieving budget IDs: {e}")
-            return []
-    
-        
-    def get_budget_by_id(self, budget_id):
-        """Retrieve budget details based on budget_id."""
-        try:
-            budget = self.budget_collection.find_one({"budget_id": budget_id, "area": config.AREA_NAME}, {"_id": 0})
-            if budget:
-                # Chuyển timestamp sang datetime nếu cần
-                if "timestamp" in budget:
-                    budget["timestamp"] = datetime.fromtimestamp(budget["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
-                return budget
-            else:
-                logger.warning(f"Budget with ID {budget_id} not found in area {config.AREA_NAME}.")
-                return None
-        except Exception as e:
-            logger.error(f"Error retrieving budget details: {e}")
-            return None
-    
-
-    def get_monthly_total_with_threshold(self, team):
-        """Tính tổng ngân sách của team trong tháng hiện tại (theo giờ VN), chỉ lấy dữ liệu thuộc area hiện tại."""
-        try:
-            vn_tz = pytz.timezone("Asia/Ho_Chi_Minh")
-            now = datetime.now(vn_tz)
-
-            # Ngày đầu tháng hiện tại theo giờ VN
-            first_day_of_month = vn_tz.localize(datetime(now.year, now.month, 1))
-            
-            # Ngày đầu tháng sau
-            if now.month < 12:
-                first_day_of_next_month = vn_tz.localize(datetime(now.year, now.month + 1, 1))
-            else:
-                first_day_of_next_month = vn_tz.localize(datetime(now.year + 1, 1, 1))
-
-            timestamp_start = int(first_day_of_month.timestamp())
-            timestamp_end = int(first_day_of_next_month.timestamp())
-
-            # 🟢 In log để debug
-            logger.info(f"🔎 Truy vấn từ {timestamp_start} ({first_day_of_month}) đến {timestamp_end} ({first_day_of_next_month})")
-
-            pipeline = [
-                {"$match": {
-                    "team": team.upper(),
-                    "timestamp": {"$gte": timestamp_start, "$lt": timestamp_end},
-                    "area": config.AREA_NAME 
-                }},
-                {"$group": {
-                    "_id": None,
-                    "total_amount": {"$sum": "$amount"}
-                }}
-            ]
-            result = list(self.budget_collection.aggregate(pipeline))
-            total_amount = result[0]["total_amount"] if result else 0
-
-            threshold_data = self.threshold_collection.find_one(
-                {"team": team.upper(), "area": config.AREA_NAME},
-                {"_id": 0, "threshold": 1, "additional_budget": 1}
-            )
-            additional_budget = threshold_data.get("additional_budget", 0) if threshold_data else 0
-
-            total_with_threshold = total_amount + additional_budget
-            logger.info(f"📊 Tổng ngân sách của team {team.upper()} tháng này (kèm ngân sách bổ sung) khu vực {config.AREA_NAME}: {total_with_threshold}")
-            return total_with_threshold
-
-        except Exception as e:
-            logger.error(f"❌ Lỗi tính ngân sách cho team {team} khu vực {config.AREA_NAME}: {e}")
-            return 0
-    
-
-    def get_budget_threshold(self, team):
-        """Lấy ngưỡng ngân sách của team trong khu vực của tháng hiện tại theo múi giờ Việt Nam."""
-        try:
-            team = team.upper()
-            vn_tz = pytz.timezone("Asia/Ho_Chi_Minh")
-            now = datetime.now(vn_tz)
-
-            # Đầu tháng và cuối tháng theo giờ Việt Nam
-            first_day_of_month = vn_tz.localize(datetime(now.year, now.month, 1, 0, 0, 0))
-            last_day_of_month = vn_tz.localize(
-                datetime(now.year, now.month, calendar.monthrange(now.year, now.month)[1], 23, 59, 59)
-            )
-
-            timestamp_start_of_month = int(first_day_of_month.timestamp())
-            timestamp_end_of_month = int(last_day_of_month.timestamp())
-
-            # 🟢 In log debug nếu cần
-            logger.info(f"🔍 Check threshold từ {timestamp_start_of_month} đến {timestamp_end_of_month} cho team {team} - area {config.AREA_NAME}")
-
-            threshold = self.threshold_collection.find_one(
-                {
-                    "team": team,
-                    "area": config.AREA_NAME,
-                    "timestamp": {"$gte": timestamp_start_of_month, "$lte": timestamp_end_of_month}
-                },
-                {"_id": 0, "threshold": 1}
-            )
-
-            return threshold["threshold"] if threshold else None
-
-        except Exception as e:
-            logger.error(f"❌ Error retrieving budget threshold for team {team}: {e}")
-            return None
-
-    def set_budget_threshold(self, team, threshold, additional_budget=0):
-        """Đặt ngưỡng ngân sách và ngân sách bổ sung cho team."""
-        try:
-            team = team.upper()
-            result = self.threshold_collection.update_one(
-                {"team": team ,"area": config.AREA_NAME },
-                {"$set": {"threshold": threshold, "additional_budget": additional_budget}},
-                upsert=True
-            )
-            logger.info(f"Set budget threshold for team {team} to {threshold} with additional budget {additional_budget}")
-            return result.modified_count > 0
-        except Exception as e:
-            logger.error(f"Error setting budget threshold for team {team}: {e}")
-            return False
-        
     def get_limit_by_key(self, key: str):
         """
         Lấy thông tin giới hạn ngân sách (limit) theo key từ collection 'budget_limits'.

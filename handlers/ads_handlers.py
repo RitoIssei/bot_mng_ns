@@ -8,7 +8,7 @@ from bson import ObjectId
 from datetime import datetime, timezone, timedelta
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackQueryHandler
-from decorators import troly_only, allowed_room , hlv_or_troly
+from decorators import troly_only
 import uuid
 from handlers.db_helpers import add_pending_rp, get_pending_rp, delete_pending_rp, add_pending_hold, get_pending_hold, delete_pending_hold, add_pending_naptien, get_pending_naptien, delete_pending_naptien
 

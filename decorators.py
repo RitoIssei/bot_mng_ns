@@ -7,13 +7,11 @@ from config import ADMIN_IDS
 import os
 import logging
 from db.rooms import RoomManager 
-from db.hlv import Manager 
 from db.troly import AssistantManager 
 from db.ads import ADSManager 
 import time
 
 room_manager = RoomManager() 
-manager = Manager()
 assistant_manager= AssistantManager()
 ads_manager= ADSManager()
 # Thiết lập logging
@@ -92,20 +90,6 @@ def ads_only_rp(func):
 
         return await func(update, context, *args, **kwargs)
 
-    return wrapped
-
-def hlv_or_troly(func):
-    """Chỉ cho HLV, trợ lý hoặc admin sử dụng."""
-    @wraps(func)
-    async def wrapped(update: Update, context: CallbackContext, *args, **kwargs):
-        user_id = update.effective_user.id
-        troly_ids = cache_data(context, 'troly_ids', assistant_manager.load_troly_ids)
-        hlv_ids = cache_data(context, 'hlv_ids', manager.load_hlv_ids)
-
-        if user_id not in troly_ids and user_id not in hlv_ids and user_id not in ADMIN_IDS:
-            await send_no_permission(update)
-            return
-        return await func(update, context, *args, **kwargs)
     return wrapped
 
 def allowed_room(func):
