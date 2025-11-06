@@ -69,7 +69,8 @@ async def handle_ngansach(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "tên nhóm": "",
             "tổ": "",
             "mã hd": "",
-            "ngân sách": ""
+            "ngân sách": "",
+            "nội dung": ""
         }
 
         field_mapping = {
@@ -80,7 +81,8 @@ async def handle_ngansach(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "mã hậu đài": "mã hd",
             "ngân sách xin": "ngân sách",
             "ns": "ngân sách",
-            "ngân sách": "ngân sách"
+            "ngân sách": "ngân sách",
+            "nội dung": "nội dung"
         }
 
         pattern = re.compile(r'^\+?(.*?)\s*:\s*(.*)$', re.IGNORECASE)
@@ -197,7 +199,8 @@ async def handle_ngansach(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📋 <b>Xác nhận ghi dữ liệu ngân sách:</b>\n\n"
             f"<b>ID:</b> <code>{random_code}</code>\n"
             f"<b>TỔ:</b> {data['tổ']}\n"
-            f"<b>Tổng NS đề xuất:</b> {format_number(budget_value)} VND\n\n"
+            f"<b>Tổng NS đề xuất:</b> {format_number(budget_value)} VND\n"
+            f"<b>Nội dung:</b> {data['nội dung']}\n\n"
         )
 
         # Đếm số lần xuất hiện của mỗi mã HD khi duyệt (theo thứ tự)
@@ -213,16 +216,13 @@ async def handle_ngansach(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info(f"🟢 Đang xử lý code: {code}")
 
             # 🔹 Nếu code bắt đầu bằng F và kết thúc là 1 hoặc 9 → lấy limit tương ứng
-            limit_info = None
-            if code.startswith("F") and not code.endswith("11") and code[-1] in ["1", "9"]:
-                key = f"HD{code[-1]}"
-                limit_info = BudgetManager().get_limit_by_key(key)
-                if limit_info:
-                    logger.info(
-                        f"🔸 Giới hạn ngân sách ({key}): {limit_info['limit']} VND (Cập nhật: {limit_info['updated_at']})"
-                    )
-                else:
-                    logger.warning(f"⚠️ Không tìm thấy limit cho key: {key}")
+            limit_info = BudgetManager().get_limit_by_key(code)
+            if limit_info:
+                logger.info(
+                    f"🔸 Giới hạn ngân sách ({key}): {limit_info['limit']} VND (Cập nhật: {limit_info['updated_at']})"
+                )
+            else:
+                logger.warning(f"⚠️ Không tìm thấy limit cho key: {key}")
 
             # 🔹 Tính ngân sách hiện tại theo logic
             if code.endswith("11"):
@@ -264,6 +264,7 @@ async def handle_ngansach(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"<b>TỔNG CHI DỰ KIẾN:</b> {format_number(total_predicted)} VND\n"
                     f"<b>GIỚI HẠN NGÂN SÁCH ({limit_info['key']}):</b> {format_number(limit_info['limit'])} VND\n"
                     f"<b>NGƯỠNG CÒN LẠI:</b> {format_number(remaining)} VND\n\n"
+                    
                 )
 
             else:
@@ -276,6 +277,7 @@ async def handle_ngansach(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
 
         # ✅ Kết thúc message chính
+        confirmation_message += f"<b>Nội dung:</b> {data['nội dung']}\n\n"
         confirmation_message += "<b>TÌNH TRẠNG:</b> <code>pending</code>\n\n"
         confirmation_message += "Bạn có chắc chắn muốn ghi dữ liệu này không?"
 
@@ -405,15 +407,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         chat_id=chat_id,
                         amount=budget_share,
                         status="pending",
+                        timestamp=custom_timestamp,
                         assistant=full_name,
-                        timestamp=custom_timestamp
+                        note=data["nội dung"]
                     )
 
                     logger.info(f"✅ Đã lưu ngân sách vào MongoDB cho mã HD: {code}, số tiền: {budget_share}")
 
                 # 🟢 Gửi thông báo thành công
                 message = (
-                    f"✅ **Dữ liệu đã được lưu thành công vào MongoDB!**\n\n"
+                    f"✅ **Dữ liệu đã được lưu thành công**\n\n"
                     f"**ID:** `{random_code}`\n"
                     f"**TỔ:** `{data['tổ']}`\n"
                 )
@@ -438,6 +441,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"  - **Ngân sách hiện tại:** `{format_number(current_budget_show)} VND`\n"
                         f"  - **Đề xuất:** `{format_number(budget_share)} VND`\n"
                         f"  - **Tổng sau khi cộng:** `{format_number(current_budget_show + budget_share)} VND`\n\n"
+                        f"NỘI DUNG: {data['nội dung']}\n\n"
                     )
 
                 await safe_edit_message(
