@@ -210,9 +210,9 @@ def main():
     application.add_handler(CommandHandler("lstroly", admin_h.list_troly))
     
     # Thêm các lệnh Room management commands trực tiếp vào application
-    application.add_handler(CommandHandler("addroom", admin_h.add_room))
+    application.add_handler(CommandHandler("ad", admin_h.add_room))
     application.add_handler(CallbackQueryHandler(admin_h.add_room_area_callback, pattern=r"^addroom_area\|"))
-    application.add_handler(CommandHandler("removeroom", admin_h.remove_room))
+    application.add_handler(CommandHandler("re", admin_h.remove_room))
     application.add_handler(CommandHandler("listrooms", admin_h.list_rooms))
 
     application.add_handler(CommandHandler(["h","help"], help_command))
