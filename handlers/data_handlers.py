@@ -256,7 +256,7 @@ async def handle_ngansach(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     # ✅ Vẫn trong giới hạn
                 
                 confirmation_message += (
-                    f"<b>Mã HD:</b> {code} - {count}\n"
+                    f"<b>MÃ DL:</b> {code} - {count}\n"
                     f"<b>NGÂN SÁCH HIỆN TẠI:</b> {format_number(current_budget_show)} VND\n"
                     f"<b>ĐỀ XUẤT:</b> {format_number(budget_share)} VND\n"
                     f"<b>TỔNG CHI DỰ KIẾN:</b> {format_number(total_predicted)} VND\n"
@@ -268,7 +268,7 @@ async def handle_ngansach(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 # 🟢 Không có limit thì vẫn chạy bình thường
                 confirmation_message += (
-                    f"<b>Mã HD:</b> {code} - {count}\n"
+                    f"<b>MÃ DL:</b> {code} - {count}\n"
                     f"<b>NGÂN SÁCH HIỆN TẠI:</b> {format_number(current_budget_show)} VND\n"
                     f"<b>ĐỀ XUẤT:</b> {format_number(budget_share)} VND\n"
                     f"<b>TỔNG CHI DỰ KIẾN:</b> {format_number(total_predicted)} VND\n\n"
@@ -422,7 +422,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         note=data["nội dung"]
                     )
 
-                    logger.info(f"✅ Đã lưu ngân sách vào MongoDB cho mã HD: {code}, số tiền: {budget_share}")
+                    logger.info(f"✅ Đã lưu ngân sách vào MongoDB cho MÃ DL: {code}, số tiền: {budget_share}")
 
                 # 🟢 Gửi thông báo thành công
                 message = (
@@ -439,7 +439,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 
                     message += (
-                        f"**Mã HD:** `{code} - {count}`\n"
+                        f"**MÃ DL:** `{code} - {count}`\n"
                         f"  - **Ngân sách hiện tại:** `{format_number(current_budget_show)} VND`\n"
                         f"  - **Đề xuất:** `{format_number(budget_share)} VND`\n"
                         f"  - **Tổng sau khi cộng:** `{format_number(current_budget_show + budget_share)} VND`\n\n"
@@ -565,7 +565,7 @@ async def handle_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         
         for code, total in total_budget_by_hd.items():
-            success_message += f"+ **MÃ HD:** `{code}`\n  - **Tổng NS:** `{format_number(total)} VND`\n"
+            success_message += f"+ **MÃ DL:** `{code}`\n  - **Tổng NS:** `{format_number(total)} VND`\n"
 
         await safe_send_message(
             context.bot,
@@ -608,7 +608,7 @@ async def handle_rf_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await safe_send_message(
                 context.bot,
                 chat_id=chat_id,
-                text="❗ **Lỗi:** Vui lòng nhập đúng định dạng `/rf <tổ> <mã HD> <số tiền> [modifier]`.\n"
+                text="❗ **Lỗi:** Vui lòng nhập đúng định dạng `/rf <tổ> <mã ĐL> <số tiền> [modifier]`.\n"
                      "Ví dụ: `/rf 1C HD1234 1000000 +`",
                 parse_mode='Markdown'
             )
@@ -811,7 +811,7 @@ async def handle_check_command(update: Update, context: ContextTypes.DEFAULT_TYP
             await safe_send_message(
                 context.bot,
                 chat_id=chat_id,
-                text="❗ <b>Lỗi:</b> Vui lòng nhập đúng định dạng <code>/check &lt;tổ&gt; &lt;mã hd&gt;</code>.\n\nVí dụ: <code>/check 1C HD12345</code>",
+                text="❗ <b>Lỗi:</b> Vui lòng nhập đúng định dạng <code>/check &lt;tổ&gt; &lt;mã dl&gt;</code>.\n\nVí dụ: <code>/check 1C HD12345</code>",
                 parse_mode='HTML'
             )
             return
@@ -844,7 +844,7 @@ async def handle_check_command(update: Update, context: ContextTypes.DEFAULT_TYP
         #     text=(
         #         f"✅ <b>Kết quả kiểm tra:</b>\n\n"
         #         f"<b>TỔ:</b> {organization}\n"
-        #         f"<b>MÃ HD:</b> <code>{mhd}</code>\n"
+        #         f"<b>MÃ DL:</b> <code>{mhd}</code>\n"
         #         f"<b>TỔNG CHI TIÊU:</b> <code>{format_number(total_expenses)} VND</code>"
         #     ),
         #     parse_mode='HTML'
@@ -854,7 +854,7 @@ async def handle_check_command(update: Update, context: ContextTypes.DEFAULT_TYP
         response_text = (
             f"✅ <b>Kết quả kiểm tra:</b>\n\n"
             f"<b>TỔ:</b> {organization}\n"
-            f"<b>MÃ HD:</b> <code>{mhd}</code>\n"
+            f"<b>MÃ DL:</b> <code>{mhd}</code>\n"
             f"<b>TỔNG CHI TIÊU:</b> <code>{format_number(total_expenses)} VND</code>"
         )
             
@@ -867,7 +867,7 @@ async def handle_check_command(update: Update, context: ContextTypes.DEFAULT_TYP
         )
 
         
-        logger.info(f"Đã kiểm tra ngân sách: Tổ {organization}, Mã HD {mhd}, Tổng chi tiêu: {total_expenses}.")
+        logger.info(f"Đã kiểm tra ngân sách: Tổ {organization}, Mã DL {mhd}, Tổng chi tiêu: {total_expenses}.")
 
     except Exception as e:
         logger.error(f"Lỗi trong xử lý lệnh /check: {e}", exc_info=True)
