@@ -617,7 +617,7 @@ async def handle_rf_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Lấy tham số từ lệnh
         organization = context.args[0].strip().upper()
         contract_code = context.args[1].strip().upper()
-
+        original_contract_code = contract_code
         # Dùng hàm mới để chuẩn hóa mã hợp đồng
         contract_code = QuanLyABCVIP.convert_to_contract_code(contract_code)
 
@@ -665,6 +665,7 @@ async def handle_rf_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             budget_id=random_code,
             team=organization,
             contract_code=contract_code,  # ✅ Gán mã hợp đồng vào đây
+            original_contract_code=original_contract_code,
             group_name=chat_title,
             chat_id=chat_id,
             amount=amount,
