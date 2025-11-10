@@ -16,12 +16,12 @@ room_manager = RoomManager()
 # Cấu hình logging
 logger = logging.getLogger(__name__)
 
-class BudgetManager:
+class QuanLyABCVIP:
     _instance = None
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(BudgetManager, cls).__new__(cls)
+            cls._instance = super(QuanLyABCVIP, cls).__new__(cls)
             cls._instance._init_db()
         return cls._instance
 
@@ -35,6 +35,7 @@ class BudgetManager:
         budget_id,
         team,
         contract_code,
+        original_contract_code,
         group_name,
         chat_id,
         amount,
@@ -67,6 +68,7 @@ class BudgetManager:
                 "budget_id": budget_id,
                 "team": team.upper(),
                 "contract_code": contract_code,
+                "original_contract_code": original_contract_code,
                 "group_name": group_name,
                 "amount": amount,
                 "status": status,
@@ -232,26 +234,35 @@ class BudgetManager:
             return False
         
     @staticmethod
-    def convert_to_contract_code(hd_code):
+    def convert_to_contract_code(hd_code: str) -> str:
         """
-        Chuyển đổi Mã HD sang contract_code nếu cần.
-        - Nếu mã kết thúc bằng số, loại bỏ số cuối cùng (trừ khi kết thúc bằng "A10").
-        :param hd_code: Mã HD đầu vào
-        :return: contract_code chuẩn hóa
+        Chuẩn hóa mã hợp đồng:
+        - Nếu mã KHÔNG nằm trong danh sách ignored_contracts → bỏ 1 ký tự cuối.
+        - Nếu mã có trong danh sách → giữ nguyên.
         """
-        hd_code = hd_code.strip().upper()
+        try:
+            if not hd_code:
+                return ""
 
-        if hd_code.endswith(("A10", "9", "11", "1")):
+            hd_code = hd_code.strip().upper()
+
+            # 🟢 Lấy danh sách mã bị bỏ qua từ DB
+            ignored_codes = QuanLyABCVIP().get_ignored_contracts_by_key("ABCVIP") or []
+            ignored_codes = [c.strip().upper() for c in ignored_codes]
+
+            # 🔍 Nếu mã không nằm trong danh sách bỏ qua → bỏ ký tự cuối
+            if hd_code not in ignored_codes:
+                new_code = hd_code[:5]
+                return new_code
+
+            # ✅ Nếu mã nằm trong danh sách bỏ qua → giữ nguyên
             return hd_code
 
-        if hd_code.startswith("F"):
-            while hd_code and hd_code[-1].isdigit():
-                hd_code = hd_code[:-1]
+        except Exception as e:
+            logging.error(f"❌ Lỗi trong convert_to_contract_code({hd_code}): {e}")
             return hd_code
-
-        return hd_code
     
-    def get_current_budget(self, contract_codes, team, chat_id ,is_prefix_search=False, current_timestamp=None):
+    def get_current_budget(self, contract_codes, team, chat_id ,original_contract_code=None, current_timestamp=None):
         """
         Lấy tổng ngân sách hiện tại của danh sách contract_code từ MongoDB.
         Nếu hôm nay là ngày cuối tháng (theo giờ Việt Nam), thì lấy ngân sách của tháng sau.
@@ -288,31 +299,31 @@ class BudgetManager:
             timestamp_start = int(first_day_of_month_vn.astimezone(pytz.utc).timestamp())
             timestamp_end = int(last_day_of_month_vn.astimezone(pytz.utc).timestamp())
 
-            if is_prefix_search:
-                prefix = contract_codes[0]
-                contract_code_query = {
-                    "$in": [prefix, prefix + '9', prefix + '10', prefix + '11']
-                }
-            else:
-                logger.info(f"Ngân sách hiện: {contract_codes}")
-                
-                contract_code_query = {
-                    "$in": contract_codes
-                }
             # 🔍 Lấy thông tin phòng để xác định khu vực
-            room_info = room_manager.get_room_by_name(chat_id)
+            room_info = room_manager.get_room_by_id(chat_id)
             if not room_info:
                 logger.warning(f"⚠️ Không tìm thấy phòng với ID {chat_id}. Không thể xác định khu vực.")
                 area_name = "unknown"
             else:
                 area_name = room_info.get("area", "unknown")
                 
-            query = {
-                "contract_code": contract_code_query,
-                "area": area_name,
-                "team": team,
-                "timestamp": {"$gte": timestamp_start, "$lte": timestamp_end}
-            }
+            if original_contract_code:
+                query = {
+                    "$or": [
+                        {"contract_code": {"$in": contract_codes}},
+                        {"original_contract_code": {"$in": [original_contract_code]}}
+                    ],
+                    "area": area_name,
+                    "team": team,
+                    "timestamp": {"$gte": timestamp_start, "$lte": timestamp_end}
+                }
+            else:
+                query = {
+                    "contract_code": {"$in": contract_codes},
+                    "area": area_name,
+                    "team": team,
+                    "timestamp": {"$gte": timestamp_start, "$lte": timestamp_end}
+                }
 
             pipeline = [
                 {"$match": query},
@@ -323,7 +334,15 @@ class BudgetManager:
             ]
 
             records = self.budget_collection.aggregate(pipeline)
-            current_budgets = {record["_id"]: record["total_amount"] for record in records}
+            current_budgets = {}
+            for record in records:
+                if original_contract_code:
+                    # Nếu có original_contract_code → dùng luôn làm key
+                    key = original_contract_code
+                else:
+                    # Nếu không → fallback về _id
+                    key = record["_id"] if isinstance(record["_id"], str) else record["_id"].get("contract_code")
+                current_budgets[key] = record["total_amount"]
 
             logger.info(f"📊 Ngân sách tổng hợp: {current_budgets}")
             return current_budgets
@@ -359,5 +378,33 @@ class BudgetManager:
             logger.error(f"❌ Lỗi khi lấy limit theo key '{key}': {e}")
             return None
 
+    def get_ignored_contracts_by_key(self, key: str):
+        """
+        Lấy danh sách contract_codes cần bỏ qua theo key từ collection 'ignored_contracts'.
+        :param key: tên key (ví dụ 'ABCVIP')
+        :return: danh sách contract_codes (list[str]) hoặc rỗng nếu không có
+        """
+        try:
+            if not hasattr(self, "ignored_contracts_collection"):
+                self.ignored_contracts_collection = mongo_manager.get_collection(config.IGNORED_CONTRACTS)
 
-budget_manager = BudgetManager()
+            if not key:
+                raise ValueError("Key không được để trống")
+
+            record = self.ignored_contracts_collection.find_one({"key": key})
+
+            if record:
+                contract_codes = record.get("contract_codes", [])
+                logger.info(f"✅ Lấy danh sách bỏ qua ({len(contract_codes)} mã) cho key '{key}' thành công.")
+                return contract_codes
+
+            logger.warning(f"⚠️ Không tìm thấy bản ghi ignored_contracts với key: {key}")
+            return []
+
+        except Exception as e:
+            logger.error(f"❌ Lỗi khi lấy ignored_contracts theo key '{key}': {e}")
+            return []
+
+
+
+budget_manager = QuanLyABCVIP()

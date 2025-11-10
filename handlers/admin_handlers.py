@@ -14,51 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 @decorators.troly_only
-# async def add_room(update: Update, context: CallbackContext):
-#     """Handler cho lệnh /addroom để thêm một nhóm mới vào danh sách"""
-#     try:
-#         chat = update.effective_chat
-#         chat_id = chat.id
-#         group_name = chat.title
-
-#         if chat.type not in ['group', 'supergroup']:
-#             await update.message.reply_text("Lệnh này chỉ có thể được sử dụng trong các nhóm hoặc supergroup.")
-#             logger.info(f"Người dùng từ nhóm không phải là group hoặc supergroup: chat_id={chat_id}")
-#             return
-
-#         # Kiểm tra xem phòng đã tồn tại chưa
-#         existing_room = room_manager.get_room_by_id(chat_id)
-#         if existing_room:
-#             await update.message.reply_text("Nhóm này đã tồn tại trong danh sách.")
-#             logger.info(f"Nhóm đã tồn tại: chat_id={chat_id}")
-#             return
-
-#         # Thêm phòng mới vào database
-#         result = room_manager.add_room(chat_id, group_name)
-#         if result:
-#             await update.message.reply_text(f"✅ Thêm nhóm thành công:\nID: {chat_id}\nTên: {group_name}")
-#             logger.info(f"Thêm nhóm mới thành công: ID={chat_id}, Tên={group_name}")
-#         else:
-#             await update.message.reply_text("❌ Lỗi khi thêm nhóm vào database.")
-#             logger.error(f"Lỗi khi thêm nhóm: chat_id={chat_id}, tên={group_name}")
-
-#         # Cập nhật cache, đảm bảo luôn là danh sách
-#         if 'allowed_rooms' not in context.bot_data:
-#             context.bot_data['allowed_rooms'] = []
-
-#         if isinstance(context.bot_data['allowed_rooms'], list):
-#             if chat_id not in context.bot_data['allowed_rooms']:
-#                 context.bot_data['allowed_rooms'].append(chat_id)
-#         else:
-#             logger.warning("allowed_rooms không phải là danh sách, reset lại thành list.")
-#             context.bot_data['allowed_rooms'] = [chat_id]
-
-#         logger.debug(f"Cập nhật cache 'allowed_rooms' với chat_id={chat_id}")
-
-#     except Exception as e:
-#         logger.error(f"Lỗi trong hàm add_room: {e}")
-#         await update.message.reply_text(f"❌ Lỗi: {e}")
-
 # === HÀM GỬI DANH SÁCH KHU VỰC ===
 async def add_room(update: Update, context: CallbackContext):
     """Khi gõ /addroom, bot sẽ hiển thị các khu để chọn"""
@@ -146,7 +101,7 @@ async def remove_room(update: Update, context: CallbackContext):
         if len(args) != 1:
             await update.message.reply_text("Sử dụng: /removeroom <chat_id>")
             return
-        
+
         chat_id_str = args[0]
         if not (chat_id_str.startswith('-') and chat_id_str[1:].isdigit()):
             await update.message.reply_text("❌ chat_id không hợp lệ. Đảm bảo rằng nó bắt đầu bằng '-' và chỉ chứa số.")
@@ -159,7 +114,7 @@ async def remove_room(update: Update, context: CallbackContext):
         if not existing_room:
             await update.message.reply_text("❌ Không tìm thấy nhóm với chat_id này.")
             return
-        
+
         group_name = existing_room.get("room_name", "Unknown")
 
         # Xóa nhóm khỏi database
@@ -168,17 +123,45 @@ async def remove_room(update: Update, context: CallbackContext):
             await update.message.reply_text(f"✅ Đã xóa nhóm:\nID: {chat_id}\nTên: {group_name}")
             logger.info(f"Xóa nhóm thành công: ID={chat_id}, Tên={group_name}")
 
-            # Cập nhật cache nếu có
+            # Cập nhật cache nếu có (hỗ trợ list, set, dict)
             if 'allowed_rooms' in context.bot_data:
-                context.bot_data['allowed_rooms'].remove(chat_id)
-                logger.debug(f"Cập nhật cache 'allowed_rooms' sau khi xóa chat_id={chat_id}")
+                ar = context.bot_data['allowed_rooms']
+                try:
+                    if isinstance(ar, list):
+                        # giữ an toàn nếu không tồn tại trong list
+                        if chat_id in ar:
+                            ar.remove(chat_id)
+                            logger.debug(f"Đã remove chat_id={chat_id} khỏi allowed_rooms (list).")
+                        else:
+                            logger.debug(f"chat_id={chat_id} không có trong allowed_rooms (list).")
+                    elif isinstance(ar, set):
+                        ar.discard(chat_id)
+                        logger.debug(f"Đã discard chat_id={chat_id} khỏi allowed_rooms (set).")
+                    elif isinstance(ar, dict):
+                        # nếu dict mapping id -> info, xóa key
+                        if chat_id in ar:
+                            del ar[chat_id]
+                            logger.debug(f"Đã xóa key chat_id={chat_id} khỏi allowed_rooms (dict).")
+                        else:
+                            # có thể dict lưu string keys
+                            str_id = str(chat_id)
+                            if str_id in ar:
+                                del ar[str_id]
+                                logger.debug(f"Đã xóa key '{str_id}' khỏi allowed_rooms (dict).")
+                            else:
+                                logger.debug(f"chat_id={chat_id} không tìm thấy trong allowed_rooms (dict).")
+                    else:
+                        logger.warning(f"Không biết kiểu allowed_rooms: {type(ar)}; không cập nhật cache.")
+                except Exception as e:
+                    logger.error(f"Lỗi khi cập nhật cache allowed_rooms: {e}")
         else:
             await update.message.reply_text("❌ Lỗi khi xóa nhóm khỏi database.")
             logger.error(f"Lỗi khi xóa nhóm: ID={chat_id}, Tên={group_name}")
 
     except Exception as e:
-        logger.error(f"Lỗi trong hàm remove_room: {e}")
+        logger.error(f"Lỗi trong hàm remove_room: {e}", exc_info=True)
         await update.message.reply_text(f"❌ Lỗi: {e}")
+
 
 
 @decorators.troly_only

@@ -195,8 +195,6 @@ def main():
     application.add_handler(CommandHandler("tiktok", data_h.handle_tiktok_command))
     application.add_handler(CallbackQueryHandler(data_h.handle_tiktok_bulk_yes, pattern="^tiktok_bulk_yes$"))
     application.add_handler(CallbackQueryHandler(data_h.handle_tiktok_bulk_no,  pattern="^tiktok_bulk_no$"))
-    application.add_handler(CommandHandler("tiktok_bulk", data_h.handle_tiktok_bulk))
-    application.add_handler(CommandHandler("tiktok_check", data_h.handle_tiktok_check))
 
     application.add_handler(CommandHandler("facebook", data_h.handle_facebook_command))
     application.add_handler(CallbackQueryHandler(data_h.handle_facebook_bulk_yes, pattern="^facebook_bulk_yes$"))

@@ -5,7 +5,7 @@ from handlers.ultils import generate_random_code, process_budget , format_number
 from handlers.db_helpers import init_db, add_confirmation, get_confirmation, delete_confirmation
 from datetime import datetime, timezone, timedelta
 from decorators import troly_only, allowed_room , troly_only
-from db.budget import BudgetManager
+from db.budget import QuanLyABCVIP
 from config import ADMIN_IDS ,EXPIRATION_TIME
 from db.note import note_manager
 from telegram.ext import CallbackContext, CallbackQueryHandler
@@ -22,7 +22,7 @@ import unicodedata
 # Thiết lập logging
 logger = logging.getLogger(__name__)
 
-budget_manager = BudgetManager()
+budget_manager = QuanLyABCVIP()
 
 init_db()
 BASE_URL = os.getenv("API_BASE_URL", "http://103.48.84.131")
@@ -104,21 +104,29 @@ async def handle_ngansach(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 logger.warning(f"Dòng không khớp với regex: {line}")
 
-        data["mã hd"] = clean_ma_hd(data["mã hd"])
         hd_codes = data["mã hd"].split(',')
 
+        # 🟢 Lấy danh sách hợp đồng bị bỏ qua
+        ignored_codes = QuanLyABCVIP().get_ignored_contracts_by_key("ABCVIP") or []
+        ignored_codes = [code.strip().upper() for code in ignored_codes]
+
         processed_hd_codes = []
+
         for code in hd_codes:
             code = code.strip().upper()
-            if code.endswith(("A10", "9", "11", "1")):
+
+            # Nếu code nằm trong danh sách bỏ qua → giữ nguyên
+            if code in ignored_codes:
                 processed_hd_codes.append(code)
-            elif code.startswith("F"):
-                # Bỏ phần số ở cuối nếu có
-                while code and code[-1].isdigit():
-                    code = code[:-1]
-                processed_hd_codes.append(code)
-            else:
-                processed_hd_codes.append(code)
+                logger.debug(f"✅ Giữ nguyên mã bị bỏ qua: {code}")
+                continue
+
+            # Nếu không → bỏ 1 ký tự cuối (nếu đủ dài)
+            new_code = code[:5]
+            processed_hd_codes.append(new_code)
+            logger.debug(f"✂️ Cắt bớt 1 ký tự cuối: {code} ➝ {new_code}")
+
+        logger.info(f"📄 Ignored contracts cho ABCVIP: {processed_hd_codes}")
 
         hd_codes = processed_hd_codes
         hd_counts = {code: hd_codes.count(code) for code in set(hd_codes)}
@@ -154,15 +162,6 @@ async def handle_ngansach(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data["tổ"] = data["tổ"].upper() if data["tổ"] else "DEFAULT"
 
         all_contract_codes = set(hd_counts.keys())
-
-        for code in list(hd_counts.keys()):
-            # 🔄 Nếu có mã đuôi "11", thêm mã gốc vào
-            if code.endswith("11") and len(code) > 2:
-                all_contract_codes.add(code[:-2])  # FD3N11 ➝ FD3N
-
-            # 🔄 Nếu mã KHÔNG có số ở cuối (VD: FD3N), thêm mã + "11"
-            elif not code[-1].isdigit():
-                all_contract_codes.add(code + "11")  # FD3N ➝ FD3N11
 
         try:
             # 🟢 Lấy ngân sách hiện tại từ MongoDB
@@ -210,13 +209,12 @@ async def handle_ngansach(update: Update, context: ContextTypes.DEFAULT_TYPE):
             hd_sequence_count[code] = hd_sequence_count.get(code, 0) + 1
 
             budget_share = round(budget_value * count / total_occurrences)
-            display_code = code[:-2] if code.endswith("11") else code
 
             # 🔹 Log mã code hiện tại
             logger.info(f"🟢 Đang xử lý code: {code}")
 
             # 🔹 Nếu code bắt đầu bằng F và kết thúc là 1 hoặc 9 → lấy limit tương ứng
-            limit_info = BudgetManager().get_limit_by_key(code)
+            limit_info = QuanLyABCVIP().get_limit_by_key(code)
             if limit_info:
                 logger.info(
                     f"🔸 Giới hạn ngân sách ({key}): {limit_info['limit']} VND (Cập nhật: {limit_info['updated_at']})"
@@ -242,7 +240,7 @@ async def handle_ngansach(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if total_predicted > limit_info["limit"]:
                     # 🚨 Gửi cảnh báo riêng
                     warning_message = (
-                        f"⚠️ <b>MÃ HẬU ĐÀI:</b> {display_code}\n"
+                        f"⚠️ <b>MÃ HẬU ĐÀI:</b> {code}\n"
                         f"❌ <b>ĐÃ VƯỢT NGƯỠNG NGÂN SÁCH!</b>\n"
                         f"<b>Giới hạn:</b> {format_number(limit_info['limit'])} VND\n"
                         f"<b>Tổng chi dự kiến:</b> {format_number(total_predicted)} VND\n"
@@ -258,7 +256,7 @@ async def handle_ngansach(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     # ✅ Vẫn trong giới hạn
                 
                 confirmation_message += (
-                    f"<b>Mã HD:</b> {display_code} - {count}\n"
+                    f"<b>Mã HD:</b> {code} - {count}\n"
                     f"<b>NGÂN SÁCH HIỆN TẠI:</b> {format_number(current_budget_show)} VND\n"
                     f"<b>ĐỀ XUẤT:</b> {format_number(budget_share)} VND\n"
                     f"<b>TỔNG CHI DỰ KIẾN:</b> {format_number(total_predicted)} VND\n"
@@ -270,7 +268,7 @@ async def handle_ngansach(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 # 🟢 Không có limit thì vẫn chạy bình thường
                 confirmation_message += (
-                    f"<b>Mã HD:</b> {display_code} - {count}\n"
+                    f"<b>Mã HD:</b> {code} - {count}\n"
                     f"<b>NGÂN SÁCH HIỆN TẠI:</b> {format_number(current_budget_show)} VND\n"
                     f"<b>ĐỀ XUẤT:</b> {format_number(budget_share)} VND\n"
                     f"<b>TỔNG CHI DỰ KIẾN:</b> {format_number(total_predicted)} VND\n\n"
@@ -354,14 +352,23 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"❌ Không tìm thấy 'mã hd' trong dữ liệu: {data}")
             return
         
-        data["mã hd"] = clean_ma_hd(data["mã hd"])
         hd_codes = data["mã hd"].split(',')
-        suffixes_to_keep = ("A10", "11", "9")
-        processed_hd_codes = [
-            code if code.endswith(suffixes_to_keep)
-            else budget_manager.convert_to_contract_code(code.strip())
-            for code in hd_codes
-        ]
+        ignored_codes = QuanLyABCVIP().get_ignored_contracts_by_key("ABCVIP") or []
+        ignored_codes = [code.strip().upper() for code in ignored_codes]
+        processed_hd_codes = []
+        original_to_processed = {}
+
+        for code in hd_codes:
+            original_code = code.strip().upper()
+
+            if original_code in ignored_codes:
+                processed_code = original_code
+            else:
+                processed_code = original_code[:5]
+
+            processed_hd_codes.append(processed_code)
+            original_to_processed[processed_code] = original_code
+                
         hd_counts = {code: processed_hd_codes.count(code) for code in set(processed_hd_codes)}
         total_occurrences = sum(hd_counts.values())
 
@@ -398,11 +405,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     # 🟢 Cập nhật tổng ngân sách theo mã HD
                     total_budget_by_hd[code] = projected_budget
                     custom_timestamp = get_custom_today_epoch()
+
+                    original_code = original_to_processed.get(code, code)
                     # 🟢 Lưu vào MongoDB
                     budget_manager.add_budget(
                         budget_id=random_code,
                         team=data["tổ"],
                         contract_code=code,
+                        original_contract_code=original_code,
                         group_name=data["tên nhóm"],
                         chat_id=chat_id,
                         amount=budget_share,
@@ -423,21 +433,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 for code, count in hd_counts.items():
                     current_budget = current_budgets.get(code, 0) if current_budgets else 0
-                    display_code = code[:-2] if code.endswith("11") else code
                     budget_share = round(data["ngân sách"] * count / total_occurrences)
                     
-                    # Tính ngân sách hiện tại theo logic
-                    if code.endswith("11"):
-                        base_code = code[:-2]
-                        current_budget_show = current_budgets.get(code, 0) + current_budgets.get(base_code, 0)
-                    elif not re.search(r'\d+$', code):  # không có số ở cuối
-                        code_11 = code + "11"
-                        current_budget_show = current_budgets.get(code, 0) + current_budgets.get(code_11, 0)
-                    else:
-                        current_budget_show = current_budgets.get(code, 0)
+                    current_budget_show = current_budgets.get(code, 0)
+
                 
                     message += (
-                        f"**Mã HD:** `{display_code} - {count}`\n"
+                        f"**Mã HD:** `{code} - {count}`\n"
                         f"  - **Ngân sách hiện tại:** `{format_number(current_budget_show)} VND`\n"
                         f"  - **Đề xuất:** `{format_number(budget_share)} VND`\n"
                         f"  - **Tổng sau khi cộng:** `{format_number(current_budget_show + budget_share)} VND`\n\n"
@@ -615,11 +617,9 @@ async def handle_rf_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Lấy tham số từ lệnh
         organization = context.args[0].strip().upper()
         contract_code = context.args[1].strip().upper()
-        if contract_code.endswith(("A10", "9", "11", "1")):
-            pass  # Giữ nguyên
-        elif contract_code.startswith("F"):
-            while contract_code and contract_code[-1].isdigit():
-                contract_code = contract_code[:-1]
+
+        # Dùng hàm mới để chuẩn hóa mã hợp đồng
+        contract_code = QuanLyABCVIP.convert_to_contract_code(contract_code)
 
         amount_str = context.args[2]
         modifier = context.args[3] if len(context.args) == 4 else None
@@ -820,37 +820,18 @@ async def handle_check_command(update: Update, context: ContextTypes.DEFAULT_TYP
         
         
         mhd_input = context.args[1].strip().upper()  # Mã hợp đồng gốc
-        is_prefix_search = mhd_input.endswith('+')
-
-        if is_prefix_search:
-            # mhd_prefix = mhd_input[:-1]
-            # mhd_list = [mhd_prefix]  # Sẽ dùng regex trong truy vấn Mongo
-
-            raw_pattern = mhd_input[:-1]  # bỏ dấu +
-            # 👉 Loại bỏ tất cả các chữ số ở cuối
-            while raw_pattern and raw_pattern[-1].isdigit():
-                raw_pattern = raw_pattern[:-1]
-
-            mhd_prefix = raw_pattern
-            mhd_list = [mhd_prefix]
-        else:
-            mhd = mhd_input
-            if mhd.endswith(("A10", "9", "11", "1")):
-                pass  # Giữ nguyên
-            elif mhd.startswith("F"):
-                while mhd and mhd[-1].isdigit():
-                    mhd = mhd[:-1]
-            mhd_list = [mhd]
-            
-            
-        if mhd.endswith(("A10", "9", "11", "1")):
-            pass  # Giữ nguyên
-        elif mhd.startswith("F"):
-            while mhd and mhd[-1].isdigit():
-                mhd = mhd[:-1]
         
+        mhd_list = [mhd_input]
         # 🟢 Lấy tổng chi tiêu của tổ và mã hợp đồng trong tháng hiện tại
-        current_budgets = budget_manager.get_current_budget(mhd_list, organization,chat_id , is_prefix_search=is_prefix_search) or {}
+
+        logger.info(f"📤 Gọi get_current_budget với các tham số:")
+        logger.info(f"   - mhd_list: {mhd_list}")
+        logger.info(f"   - organization: {organization}")
+        logger.info(f"   - chat_id: {chat_id}")
+        logger.info(f"   - original_contract_code: {mhd_list[0]}")
+
+
+        current_budgets = budget_manager.get_current_budget(mhd_list, organization,chat_id , original_contract_code=mhd_list[0]) or {}
 
         # 🟢 Lấy giá trị từ dictionary, mặc định là 0 nếu không có
         total_expenses = current_budgets.get(mhd, 0)
@@ -868,32 +849,14 @@ async def handle_check_command(update: Update, context: ContextTypes.DEFAULT_TYP
         #     parse_mode='HTML'
         # )
         
-        if is_prefix_search:
-            total_expenses = sum(current_budgets.values())
-            matched_codes = sorted(current_budgets.keys())  # sắp xếp cho đẹp
-            joined_codes = " + ".join(matched_codes) or mhd_prefix
-
-            budget_lines = [
-                f"<b>{code}</b>: <code>{format_number(amount)} VND</code>"
-                for code, amount in current_budgets.items()
-            ]
-            budget_text = "\n".join(budget_lines) or "<i>Không có dữ liệu</i>"
-
-            response_text = (
-                f"✅ <b>Kết quả kiểm tra:</b>\n\n"
-                f"<b>TỔ:</b> {organization}\n"
-                f"<b>MÃ HD:</b> <code>{joined_codes}</code>\n"
-                f"<b>TỔNG CHI TIÊU:</b> <code>{format_number(total_expenses)} VND</code>\n\n"
-                # f"<b>CHI TIẾT:</b>\n{budget_text}"
-            )
-        else:
-            total_expenses = current_budgets.get(mhd, 0)
-            response_text = (
-                f"✅ <b>Kết quả kiểm tra:</b>\n\n"
-                f"<b>TỔ:</b> {organization}\n"
-                f"<b>MÃ HD:</b> <code>{mhd}</code>\n"
-                f"<b>TỔNG CHI TIÊU:</b> <code>{format_number(total_expenses)} VND</code>"
-            )
+        total_expenses = current_budgets.get(mhd, 0)
+        response_text = (
+            f"✅ <b>Kết quả kiểm tra:</b>\n\n"
+            f"<b>TỔ:</b> {organization}\n"
+            f"<b>MÃ HD:</b> <code>{mhd}</code>\n"
+            f"<b>TỔNG CHI TIÊU:</b> <code>{format_number(total_expenses)} VND</code>"
+        )
+            
 
         await safe_send_message(
             context.bot,
@@ -987,9 +950,9 @@ async def handle_tiktok_command(update: Update, context: ContextTypes.DEFAULT_TY
                     f"    Nickname: {ui.get('nickname','–')}, Status: {ui.get('status','–')}"
                 )
                 if info.get("exists"):   # tồn tại trong hệ thống
-                    let += "\n    🔒 <b>Đã tồn tại trong hệ thống</b>"
+                    let += "\n    ❌ <b>Đã tồn tại trong hệ thống</b>"
                 else:                    # mới, chưa có trong hệ thống
-                    let += "\n    🆕 <b>Chưa có trong hệ thống</b>"
+                    let += "\n    ✅ <b>Chưa có trong hệ thống</b>"
                 lines.append(let)
 
         text = (
@@ -1043,9 +1006,12 @@ async def handle_tiktok_bulk_yes(update: Update, context: ContextTypes.DEFAULT_T
         and info.get("userInfo") is not None
     ]
     
+    old_text = query.message.text or ""
+    clean_text = old_text.split("\n\nBạn có muốn")[0].strip()
+    
     
     if not to_save:
-        return await query.edit_message_text("❗ Không có tài khoản mới để lưu.")
+        return await query.edit_message_text(f"{clean_text}\n\n❗ Không có tài khoản mới để lưu.")
 
     # Gọi API bulk-save với mảng userInfo của các tài khoản mới
     async with aiohttp.ClientSession() as session:
@@ -1057,9 +1023,11 @@ async def handle_tiktok_bulk_yes(update: Update, context: ContextTypes.DEFAULT_T
             res = await resp.json()
 
     if resp.status in (200, 201):
-        await query.edit_message_text("✅ Đã lưu thành công các tài khoản mới vào hệ thống!")
+        new_text = f"{clean_text}\n\n✅ Đã lưu thành công các tài khoản mới vào hệ thống!"
     else:
-        await query.edit_message_text(f"❌ Lưu thất bại: {res.get('message','Không rõ lỗi')}")
+        new_text = f"{clean_text}\n\n❌ Lưu thất bại: {res.get('message','Không rõ lỗi')}"
+
+    await query.edit_message_text(new_text, parse_mode="HTML")
 
 
 
@@ -1067,7 +1035,9 @@ async def handle_tiktok_bulk_no(update: Update, context: ContextTypes.DEFAULT_TY
     """Xử lý khi user bấm 'Không'"""
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("❌ Đã hủy thao tác lưu tài khoản.")
+    old_text = query.message.text or ""
+    clean_text = old_text.split("\n\nBạn có muốn")[0].strip()
+    await query.edit_message_text(f"{clean_text}\n\n❌ Đã hủy thao tác lưu tài khoản.")
 
 @allowed_room
 @troly_only
@@ -1090,12 +1060,16 @@ async def handle_facebook_command(update: Update, context: ContextTypes.DEFAULT_
         )
 
     # 2) gọi API bulk-check
-    await safe_send_message(context.bot, chat_id,
+    await safe_send_message(
+        context.bot, chat_id,
         f"🔄 Đang kiểm tra {len(uids)} user trên Facebook..."
     )
+
     async with aiohttp.ClientSession() as session:
         async with session.post(API_FACEBOOK_BULK_CHECK, json={"uids": uids}) as resp:
             result = await resp.json()
+            logger.info(f"API_FACEBOOK_BULK_CHECK raw response: {result}")
+
     data = result.get("data", [])
 
     # lưu tạm để callback dùng tiếp
@@ -1105,34 +1079,57 @@ async def handle_facebook_command(update: Update, context: ContextTypes.DEFAULT_
     lines = []
     for idx, info in enumerate(data):
         uid = uids[idx]
-        if not info:
-            # trường hợp exists=False
-            msg = info.get("message", "Không tìm thấy")
-            lines.append(f"• <b>{uid}</b>: {msg}")
-        else:
-            ui = info["userInfo"]
-            # thêm icon 🔒 hoặc ✅ cho nổi bật
-            let = (
-                f"• <b>{ui['username']}</b> (ID: <code>{ui['user_id']}</code>)\n"
-                f"    Nickname: {ui.get('nickname','–')}, Type: {ui.get('type','–')} ,Status: {ui.get('status','–')}"
-            )
-            # chỉ khi exists=True mới thêm icon và dòng "Đã tồn tại..."
-            if info.get("exists"):
-                let += "\n    🔒 <b>Đã tồn tại trong hệ thống</b>"
-            lines.append(let)
-            
-    text = "🔍 <b>Kết quả kiểm tra Facebook users:</b>\n" \
-           + "\n".join(lines) \
-           + "\n\nBạn có muốn lưu (hoặc cập nhật) những tài khoản này không?"
 
-    kb = InlineKeyboardMarkup([[  # nút Yes/No
-        InlineKeyboardButton("✅ Có",    callback_data="facebook_bulk_yes"),
-        InlineKeyboardButton("❌ Không", callback_data="facebook_bulk_no")
-    ]])
+        # 🧩 Nếu info None hoặc userInfo None thì hiển thị lỗi cụ thể
+        if not info or not info.get("userInfo"):
+            msg = info.get("message", "Không tìm thấy thông tin.")
+            lines.append(f"• <b>{uid}</b>: {msg}")
+            continue  # bỏ qua phần dưới
+
+        # ✅ Nếu có userInfo thì xử lý bình thường
+        ui = info["userInfo"]
+        let = (
+            f"• <b>{ui.get('username','(không có username)')}</b> "
+            f"(ID: <code>{ui.get('user_id','–')}</code>)\n"
+            f"    Nickname: {ui.get('nickname','–')}, "
+            f"Type: {ui.get('type','–')}, Status: {ui.get('status','–')}"
+        )
+
+        if info.get("exists"):   # tồn tại trong hệ thống
+            let += "\n    ❌ <b>Đã tồn tại trong hệ thống</b>"
+        else:                    # mới, chưa có trong hệ thống
+            let += "\n    ✅ <b>Chưa có trong hệ thống</b>"
+
+        lines.append(let)
+
+    # Nếu không có user hợp lệ nào thì dừng luôn
+    if not lines:
+        return await safe_send_message(context.bot, chat_id, "❗ Không có dữ liệu hợp lệ để hiển thị.")
+
+    text = (
+        "🔍 <b>Kết quả kiểm tra Facebook users:</b>\n"
+        + "\n".join(lines)
+        + "\n\nBạn có muốn lưu (hoặc cập nhật) những tài khoản này không?"
+    )
+
+    # 🧩 Kiểm tra: nếu không có user mới (exists == False) thì không hiện nút
+    has_new_user = any(info.get("userInfo") and not info.get("exists") for info in data)
+    if not has_new_user:
+        return await safe_send_message(context.bot, chat_id, text, parse_mode="HTML")
+
+    # Nếu có user mới → hiện Yes/No
+    kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Có", callback_data="facebook_bulk_yes"),
+            InlineKeyboardButton("❌ Không", callback_data="facebook_bulk_no")
+        ]
+    ])
+
     await safe_send_message(
         context.bot, chat_id,
         text, parse_mode="HTML", reply_markup=kb
     )
+
 
 
 async def handle_facebook_bulk_yes(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1159,8 +1156,11 @@ async def handle_facebook_bulk_yes(update: Update, context: ContextTypes.DEFAULT
         and info.get("userInfo") is not None
     ]
     
+    old_text = query.message.text or ""
+    clean_text = old_text.split("\n\nBạn có muốn")[0].strip()
+    
     if not to_save:
-        return await query.edit_message_text("❗ Không có tài khoản mới để lưu.")
+        return await query.edit_message_text(f"{clean_text}\n\n❗ Không có tài khoản mới để lưu.")
 
     # gọi API bulk-save
     async with aiohttp.ClientSession() as session:
@@ -1171,17 +1171,22 @@ async def handle_facebook_bulk_yes(update: Update, context: ContextTypes.DEFAULT
         ) as resp:
             res = await resp.json()
 
+    
     if resp.status in (200, 201):
-        await query.edit_message_text("✅ Đã lưu thành công các Facebook user mới vào hệ thống!")
+        new_text = f"{clean_text}\n\n✅ Đã lưu thành công các tài khoản mới vào hệ thống!"
     else:
-        await query.edit_message_text(f"❌ Lưu thất bại: {res.get('message','Không rõ lỗi')}")
+        new_text = f"{clean_text}\n\n❌ Lưu thất bại: {res.get('message','Không rõ lỗi')}"
+
+    await query.edit_message_text(new_text, parse_mode="HTML")
 
 
 async def handle_facebook_bulk_no(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Xử lý khi user bấm 'Không' cho Facebook"""
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("❌ Đã hủy thao tác lưu Facebook user.")
+    old_text = query.message.text or ""
+    clean_text = old_text.split("\n\nBạn có muốn")[0].strip()
+    await query.edit_message_text(f"{clean_text}\n\n❌ Đã hủy thao tác lưu Facebook user.")
 
 
 @allowed_room

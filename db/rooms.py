@@ -112,18 +112,6 @@ class RoomManager:
         except Exception as e:
             logger.error(f"❌ Lỗi khi lấy thông tin phòng: {e}")
             return None
-        
-    def get_room_by_name(self, name_room_chat):
-        try:
-            room = self.rooms_collection.find_one({"room_name": name_room_chat}, {"_id": 0})
-            if room:
-                return room
-            else:
-                logger.warning(f"⚠️ Không tìm thấy phòng với tên {name_room_chat}.")
-                return None
-        except Exception as e:
-            logger.error(f"❌ Lỗi khi lấy thông tin phòng trong khu vực: {e}")
-            return None
     
         
 room_manager = RoomManager()

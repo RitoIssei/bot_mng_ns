@@ -14,6 +14,7 @@ HLV = 'hlv'
 BUDGET ='ngan_sach'
 ADS = 'ads'
 BUDGET_THRESHOLD='budget_limits'
+IGNORED_CONTRACTS = 'ignored_contracts'
 
 AREA_NAME=os.getenv("AREA_NAME")
 MONGO_URI=os.getenv("MONGO_URI")
