@@ -68,28 +68,29 @@ def get_custom_today_epoch():
     now = datetime.now()
     last_day = calendar.monthrange(now.year, now.month)[1]  # Lấy ngày cuối của tháng hiện tại
 
-    # Nếu hôm nay là ngày cuối tháng
-    if now.day == last_day:
-        # Xác định tháng kế tiếp
-        if now.month == 12:
-            new_year = now.year + 1
-            new_month = 1
-        else:
-            new_year = now.year
-            new_month = now.month + 1
+    # # Nếu hôm nay là ngày cuối tháng
+    # if now.day == last_day:
+    #     # Xác định tháng kế tiếp
+    #     if now.month == 12:
+    #         new_year = now.year + 1
+    #         new_month = 1
+    #     else:
+    #         new_year = now.year
+    #         new_month = now.month + 1
         
-        # Tạo datetime mới là ngày 1 của tháng kế tiếp, 1 giờ sáng
-        new_date = datetime(
-            new_year,
-            new_month,
-            1,
-            1,  # hour=1
-            0,  # minute=0
-            0   # second=0
-        )
-        return new_date.timestamp()
-    else:
-        return time.time()
+    #     # Tạo datetime mới là ngày 1 của tháng kế tiếp, 1 giờ sáng
+    #     new_date = datetime(
+    #         new_year,
+    #         new_month,
+    #         1,
+    #         1,  # hour=1
+    #         0,  # minute=0
+    #         0   # second=0
+    #     )
+    #     return new_date.timestamp()
+    # else:
+    #     return time.time()
+    return time.time()
 
 @retry(
     stop=stop_after_attempt(3),
