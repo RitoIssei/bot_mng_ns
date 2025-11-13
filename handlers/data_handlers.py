@@ -1402,8 +1402,8 @@ async def handle_xn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines = []
         for r in reports:
         # Xác định biểu tượng hiển thị cho điều kiện
-            cond1 = r.get("approvedCondition1", "")
-            cond2 = r.get("approvedCondition2", "")
+            cond1 = r.get("approvedCondition2", "")
+            cond2 = r.get("approvedCondition1", "")
             icon1 = "✅" if cond1 == "ĐẠT" else "❌"
             icon2 = "✅" if cond2 == "ĐẠT" else "❌"
 
