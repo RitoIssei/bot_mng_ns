@@ -3,6 +3,7 @@ from telegram.ext import ContextTypes
 from telegram.error import TelegramError
 from handlers.ultils import generate_random_code, process_budget , format_number , safe_send_message , safe_edit_message , normalize_text , get_custom_today_epoch
 from handlers.db_helpers import init_db, add_confirmation, get_confirmation, delete_confirmation
+from decorators import cache_data
 from datetime import datetime, timezone, timedelta
 from decorators import troly_only, allowed_room , troly_only
 from db.budget import QuanLyABCVIP
@@ -19,6 +20,9 @@ import json
 import aiohttp
 import os
 import unicodedata
+from db.troly import AssistantManager
+
+assistant_manager= AssistantManager()
 # Thiết lập logging
 logger = logging.getLogger(__name__)
 
@@ -34,6 +38,9 @@ API_BULK_CHECK = f"{BASE_URL}api/v1/tiktok-user/bulk-check"
 API_BULK_SAVE  = f"{BASE_URL}api/v1/tiktok-user/bulk-save"
 API_FACEBOOK_BULK_CHECK  = f"{BASE_URL}api/v1/facebook-user/bulk-check"
 API_FACEBOOK_BULK_SAVE   = f"{BASE_URL}api/v1/facebook-user/bulk-save"
+API_AGENCY_KPI = f"{BASE_URL}api/v1/agency-kpi"
+
+logger.info(f"   - mhd_list: {API_AGENCY_KPI}")
 
 def escape_html(text):
     """Escape các ký tự đặc biệt trong HTML."""
@@ -727,72 +734,6 @@ async def handle_rf_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
 
-# @allowed_room
-# @troly_only
-# async def handle_tiktok_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-#     chat_id = update.effective_chat.id
-#     user = update.effective_user
-
-#     try:
-#         # Kiểm tra có đúng định dạng không
-#         if len(context.args) != 1:
-#             await safe_send_message(
-#                 context.bot,
-#                 chat_id=chat_id,
-#                 text="❗ <b>Lỗi:</b> Vui lòng nhập đúng định dạng <code>/tiktok <username></code>",
-#                 parse_mode='HTML'
-#             )
-#             return
-
-#         username = context.args[0].strip()
-#         group_name = update.effective_chat.title or f"{user.first_name or ''} {user.last_name or ''}".strip()
-#         assistant = user.username or "unknown"
-
-#         # Thông báo đang xử lý
-#         await safe_send_message(
-#             context.bot,
-#             chat_id=chat_id,
-#             text=f"🔄 Đang xử lý tạo TikTok user <code>{username}</code>...",
-#             parse_mode='HTML'
-#         )
-
-#         # Gọi API
-#         payload = {
-#             "username": username,
-#             "groupName": group_name,
-#             "assistant": assistant
-#         }
-
-#         async with aiohttp.ClientSession() as session:
-#             async with session.post(API_URL, json=payload) as response:
-#                 result = await response.json()
-
-#         # Trả kết quả cho user
-#         if response.status == 201 and "user" in result:
-#             user_data = result["user"]
-#             msg = (
-#                 f"✅ <b>Đã tạo thành công TikTok user:</b>\n\n"
-#                 f"👤 <b>Username:</b> {user_data['username']}\n"
-#                 f"🆔 <b>User ID:</b> <code>{user_data['user_id']}</code>\n"
-#                 f"📛 <b>Nickname:</b> {user_data['nickname']}\n"
-#             )
-#         else:
-#             msg = f"❌ <b>Tạo user thất bại:</b> {result.get('message', 'Không rõ lỗi')}"
-
-#         await safe_send_message(
-#             context.bot,
-#             chat_id=chat_id,
-#             text=msg,
-#             parse_mode='HTML'
-#         )
-
-#     except Exception as e:
-#         await safe_send_message(
-#             context.bot,
-#             chat_id=chat_id,
-#             text=f"❗ <b>Lỗi hệ thống:</b> {str(e)}",
-#             parse_mode='HTML'
-#         )
         
 @allowed_room
 @troly_only
@@ -1377,3 +1318,113 @@ async def handle_tiktok_check(update: Update, context: ContextTypes.DEFAULT_TYPE
         ("<b>đã tồn tại</b> trong hệ thống." if exists else "<b>chưa có</b>, có thể tạo mới.")
     )
     await safe_send_message(context.bot, chat_id, text, parse_mode="HTML")
+    
+async def handle_xn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    chat_id = update.effective_chat.id
+    group_name = update.effective_chat.title or f"{user.first_name or ''} {user.last_name or ''}".strip()
+    assistant = user.username or "unknown"
+
+    try:
+        # 1️⃣ Kiểm tra tham số
+        if not context.args:
+            return await safe_send_message(
+                context.bot, chat_id,
+                "⚠️ Cú pháp: /xn <Mã đại lý> [<Số tiền>]\n"
+                "Ví dụ: /xn C02LQ 10000000"
+            )
+
+        agent = context.args[0].strip()
+        amount = None
+        if len(context.args) > 1:
+            try:
+                amount = int(context.args[1])
+            except ValueError:
+                return await safe_send_message(
+                    context.bot, chat_id,
+                    "❌ Số tiền không hợp lệ. Vui lòng nhập số hợp lệ, ví dụ: /xn C02LQ 10000000"
+                )
+
+        input_budgets = [amount] if amount else []
+
+        # Kiểm tra quyền trợ lý hoặc admin
+        user_id = user.id
+        troly_ids = cache_data(context, 'troly_ids', assistant_manager.load_troly_ids)
+        is_troly_or_admin = user_id in troly_ids or user_id in ADMIN_IDS
+
+        # Payload gửi API
+        payload = {
+            "agent": agent,
+            "employeeType": "nhân viên online",
+            "inputBudgets": input_budgets,
+            "ratioBudgetToKpi": 0,
+            "ratioDepositToBudget": 0,
+            "ratioWagerToDeposit": 0,
+            "dryRun": not is_troly_or_admin,   # chỉ ghi DB nếu là trợ lý hoặc admin
+            "createdBy": assistant              # truyền username người gửi
+        }
+
+        await safe_send_message(
+            context.bot, chat_id,
+            f"🔄 Đang tính KPI cho đại lý <b>{agent}</b>...",
+            parse_mode="HTML"
+        )
+
+        # 2️⃣ Gọi API
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(API_AGENCY_KPI, json=payload, timeout=30) as resp:
+                    result = await resp.json()
+                    logger.info(f"API_AGENCY_KPI raw response: {result}")
+        except aiohttp.ClientError as ce:
+            logger.error(f"Lỗi mạng khi gọi API_AGENCY_KPI: {ce}", exc_info=True)
+            return await safe_send_message(
+                context.bot, chat_id,
+                "❌ Không thể kết nối tới API agency KPI."
+            )
+        except Exception as e:
+            logger.error(f"Lỗi parse JSON từ API_AGENCY_KPI: {e}", exc_info=True)
+            return await safe_send_message(
+                context.bot, chat_id,
+                "❌ Lỗi xử lý dữ liệu trả về từ server KPI."
+            )
+
+        # 3️⃣ Xử lý dữ liệu
+        reports = result.get("reports") or []
+        if not reports:
+            msg = result.get("message", "Không có dữ liệu trả về.")
+            return await safe_send_message(
+                context.bot, chat_id,
+                f"⚠️ {msg}"
+            )
+
+        # build text tóm tắt
+        lines = []
+        for r in reports:
+            lines.append(
+                f"<b>Mã đại lý:</b> {r.get('agency')}\n"
+                f"💰 Phí QC: {r.get('advertisingFee'):,}\n"
+                f"📊 Điểm KPI: {r.get('kpiScore'):,}\n"
+                f"📊 Điểm KPI cần đạt: {r.get('kpiTarget'):.2f}\n"
+                f"💵 Tổng nạp/Tổng ngân sách: {r.get('depositToAdFeeRatio'):.2f}\n"
+                f"🎰 Vòng cược: {r.get('wageringMultiplier'):.2f}\n"
+                f"🏆 Điều kiện 1: {r.get('approvedCondition1')}\n"
+                f"💵 Lợi nhuận thực tế: {r.get('actualProfit', 0) * 1000:,.0f}\n"
+                f"🏆 Điều kiện 2: {r.get('approvedCondition2')}\n"
+                f"----------------------"
+            )
+
+        text = f"✅ <b>Kết quả KPI cho {agent}</b>:\n\n" + "\n".join(lines)
+
+        await safe_send_message(
+            context.bot, chat_id,
+            text,
+            parse_mode="HTML"
+        )
+
+    except Exception as e:
+        logger.error(f"Lỗi trong /xn: {e}", exc_info=True)
+        await safe_send_message(
+            context.bot, chat_id,
+            f"❗ Lỗi hệ thống: {e}"
+        )

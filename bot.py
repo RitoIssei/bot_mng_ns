@@ -190,6 +190,7 @@ def main():
     application.add_handler(CommandHandler("done", data_h.handle_done_command))
     application.add_handler(CommandHandler("note", data_h.handle_note_command))
     application.add_handler(CommandHandler("check", data_h.handle_check_command))
+    application.add_handler(CommandHandler("xn", data_h.handle_xn_command))
 
     # Thêm handler cho lệnh /tiktok để xử lý
     application.add_handler(CommandHandler("tiktok", data_h.handle_tiktok_command))
