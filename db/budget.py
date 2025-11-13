@@ -261,21 +261,25 @@ class QuanLyABCVIP:
             logging.error(f"❌ Lỗi trong convert_to_contract_code({hd_code}): {e}")
             return hd_code
     
-    def get_current_budget(self, contract_codes, team, chat_id, original_contract_code=None, current_timestamp=None):
+    def get_current_budget(self, contract_codes, team, chat_id ,original_contract_code=None, current_timestamp=None):
         """
         Lấy tổng ngân sách hiện tại của danh sách contract_code từ MongoDB.
         Nếu hôm nay là ngày cuối tháng (theo giờ Việt Nam), thì lấy ngân sách của tháng sau.
         """
         try:
+            # 🇻🇳 Giờ Việt Nam
             vn_tz = pytz.timezone("Asia/Ho_Chi_Minh")
             if current_timestamp:
+                # Nếu timestamp truyền vào → convert sang datetime theo VN timezone
                 now_vn = datetime.fromtimestamp(current_timestamp, tz=pytz.utc).astimezone(vn_tz)
             else:
+                # Mặc định lấy thời điểm hiện tại
                 now_vn = datetime.now(vn_tz)
 
-            # Xác định đầu & cuối tháng (VN timezone)
+            # 🟢 Kiểm tra nếu hôm nay là ngày cuối tháng (theo giờ VN)
             last_day = calendar.monthrange(now_vn.year, now_vn.month)[1]
             if now_vn.day == last_day:
+                # 👉 Chuyển sang tháng sau
                 if now_vn.month == 12:
                     next_month = datetime(now_vn.year + 1, 1, 1, tzinfo=vn_tz)
                 else:
@@ -284,53 +288,41 @@ class QuanLyABCVIP:
             else:
                 first_day_of_month_vn = datetime(now_vn.year, now_vn.month, 1, tzinfo=vn_tz)
 
+            # 🟢 Ngày cuối tháng theo giờ VN
             year = first_day_of_month_vn.year
             month = first_day_of_month_vn.month
             last_day_of_target_month = calendar.monthrange(year, month)[1]
             last_day_of_month_vn = datetime(year, month, last_day_of_target_month, 23, 59, 59, tzinfo=vn_tz)
 
-            # UTC timestamps
+            # 👉 Chuyển sang UTC để truy vấn theo timestamp (Mongo lưu UTC)
             timestamp_start = int(first_day_of_month_vn.astimezone(pytz.utc).timestamp())
             timestamp_end = int(last_day_of_month_vn.astimezone(pytz.utc).timestamp())
 
-            # Xác định khu vực
+            # 🔍 Lấy thông tin phòng để xác định khu vực
             room_info = room_manager.get_room_by_id(chat_id)
-            area_name = room_info.get("area", "unknown") if room_info else "unknown"
-
-            # --- Tạo điều kiện thời gian: nếu không có end_time thì dùng timestamp, nếu có end_time thì dùng end_time ---
-            time_filter = {
-                "$or": [
-                    {
-                        "end_time": {"$exists": False},
-                        "timestamp": {"$gte": timestamp_start, "$lte": timestamp_end}
-                    },
-                    {
-                        "end_time": {"$exists": True},
-                        "end_time": {"$gte": timestamp_start, "$lte": timestamp_end}
-                    }
-                ]
-            }
-
-            # Lưu ý: trên Mongo, không thể có 2 key trùng tên (ví dụ 2 x "$or") ở cùng 1 dict - do đó ta sẽ kết hợp mọi điều kiện bằng $and.
-            common_conditions = [
-                {"area": area_name},
-                {"team": team},
-                time_filter
-            ]
-
-            # Điều kiện cho contract
+            if not room_info:
+                logger.warning(f"⚠️ Không tìm thấy phòng với ID {chat_id}. Không thể xác định khu vực.")
+                area_name = "unknown"
+            else:
+                area_name = room_info.get("area", "unknown")
+                
             if original_contract_code:
-                contract_condition = {
+                query = {
                     "$or": [
                         {"contract_code": {"$in": contract_codes}},
                         {"original_contract_code": {"$in": [original_contract_code]}}
-                    ]
+                    ],
+                    "area": area_name,
+                    "team": team,
+                    "timestamp": {"$gte": timestamp_start, "$lte": timestamp_end}
                 }
             else:
-                contract_condition = {"contract_code": {"$in": contract_codes}}
-
-            # Kết hợp tất cả bằng $and để đảm bảo không cái nào bị ghi đè
-            query = {"$and": common_conditions + [contract_condition]}
+                query = {
+                    "contract_code": {"$in": contract_codes},
+                    "area": area_name,
+                    "team": team,
+                    "timestamp": {"$gte": timestamp_start, "$lte": timestamp_end}
+                }
 
             pipeline = [
                 {"$match": query},
@@ -347,6 +339,7 @@ class QuanLyABCVIP:
                     # Nếu có original_contract_code → dùng luôn làm key
                     key = original_contract_code
                 else:
+                    # Nếu không → fallback về _id
                     key = record["_id"] if isinstance(record["_id"], str) else record["_id"].get("contract_code")
                 current_budgets[key] = record["total_amount"]
 
