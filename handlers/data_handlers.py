@@ -1366,7 +1366,7 @@ async def handle_xn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await safe_send_message(
             context.bot, chat_id,
-            f"🔄 Đang tính KPI cho đại lý <b>{agent}</b>...",
+            f"🔄 Đang tính HQQC cho đại lý <b>{agent}</b>...",
             parse_mode="HTML"
         )
 
@@ -1417,10 +1417,11 @@ async def handle_xn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"<b>Điều kiện 2:</b> {cond2} {icon2} \n"
                 f"💵 <b>Lợi nhuận thực tế:</b> {r.get('actualProfit', 0) * 1000:,.0f}\n"
                 f"<b>Điều kiện 1:</b> {cond1} {icon1} \n"
+                f"Thời gian cập nhật gần nhất: {r.get('lastModified')} \n"
                 f"----------------------"
             )
 
-        text = f"✅ <b>Kết quả KPI cho {agent}</b>:\n\n" + "\n".join(lines)
+        text = f"✅ <b>Kết quả HQQC cho {agent}</b>:\n\n" + "\n".join(lines)
 
         await safe_send_message(
             context.bot, chat_id,
