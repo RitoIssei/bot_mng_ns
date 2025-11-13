@@ -1414,9 +1414,9 @@ async def handle_xn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🎯 <b>KPI cần đạt:</b> {r.get('kpiTarget'):.2f}\n"
                 f"💵 <b>Tổng nạp/Tổng ngân sách:</b> {r.get('depositToAdFeeRatio'):.2f}\n"
                 f"🎰 <b>Vòng cược:</b> {r.get('wageringMultiplier'):.2f}\n"
+                f"<b>Điều kiện 2:</b> {cond2} {icon2} \n"
                 f"💵 <b>Lợi nhuận thực tế:</b> {r.get('actualProfit', 0) * 1000:,.0f}\n"
                 f"<b>Điều kiện 1:</b> {cond1} {icon1} \n"
-                f"<b>Điều kiện 2:</b> {cond2} {icon2} \n"
                 f"----------------------"
             )
 
