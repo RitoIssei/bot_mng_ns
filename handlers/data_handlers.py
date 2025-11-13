@@ -1401,16 +1401,22 @@ async def handle_xn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # build text tóm tắt
         lines = []
         for r in reports:
+        # Xác định biểu tượng hiển thị cho điều kiện
+            cond1 = r.get("approvedCondition1", "")
+            cond2 = r.get("approvedCondition2", "")
+            icon1 = "✅" if cond1 == "ĐẠT" else "❌"
+            icon2 = "✅" if cond2 == "ĐẠT" else "❌"
+
             lines.append(
                 f"<b>Mã đại lý:</b> {r.get('agency')}\n"
-                f"💰 Phí QC: {r.get('advertisingFee'):,}\n"
-                f"📊 Điểm KPI: {r.get('kpiScore'):,}\n"
-                f"📊 Điểm KPI cần đạt: {r.get('kpiTarget'):.2f}\n"
-                f"💵 Tổng nạp/Tổng ngân sách: {r.get('depositToAdFeeRatio'):.2f}\n"
-                f"🎰 Vòng cược: {r.get('wageringMultiplier'):.2f}\n"
-                f"🏆 Điều kiện 1: {r.get('approvedCondition1')}\n"
-                f"💵 Lợi nhuận thực tế: {r.get('actualProfit', 0) * 1000:,.0f}\n"
-                f"🏆 Điều kiện 2: {r.get('approvedCondition2')}\n"
+                f"💰 <b>Phí QC:</b> {r.get('advertisingFee'):,}\n"
+                f"📊 <b>Điểm KPI:</b> {r.get('kpiScore'):,}\n"
+                f"🎯 <b>KPI cần đạt:</b> {r.get('kpiTarget'):.2f}\n"
+                f"💵 <b>Tổng nạp/Tổng ngân sách:</b> {r.get('depositToAdFeeRatio'):.2f}\n"
+                f"🎰 <b>Vòng cược:</b> {r.get('wageringMultiplier'):.2f}\n"
+                f"💵 <b>Lợi nhuận thực tế:</b> {r.get('actualProfit', 0) * 1000:,.0f}\n"
+                f"<b>Điều kiện 1:</b> {cond1} {icon1} \n"
+                f"<b>Điều kiện 2:</b> {cond2} {icon2} \n"
                 f"----------------------"
             )
 
