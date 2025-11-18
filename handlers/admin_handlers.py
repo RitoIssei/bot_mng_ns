@@ -47,6 +47,7 @@ async def add_room(update: Update, context: CallbackContext):
         ("Khu F", "khu_f"),
         ("Khu G", "khu_g"),
         ("Khu H", "khu_h"),
+        ("Khu L", "khu_l"),
     ]
 
     keyboard = [
